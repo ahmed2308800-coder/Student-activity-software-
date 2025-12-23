@@ -1,0 +1,35 @@
+<div class="page-header">
+    <h1>My Invitations</h1>
+    <p>View and respond to event invitations</p>
+</div>
+
+<div id="invitationsContainer">
+    <div class="empty-state">
+        <div class="empty-state-icon"><i class="fas fa-envelope"></i></div>
+        <div class="empty-state-message">Guest invitations are sent via email. Check your email for invitation links.</div>
+    </div>
+</div>
+
+<script>
+async function initPage() {
+    // Guest invitations are typically handled via email links
+    // This page can be used to show invitation status if implemented
+    const container = document.getElementById('invitationsContainer');
+    container.innerHTML = `
+        <div class="card">
+            <div class="card-body">
+                <div class="empty-state">
+                    <div class="empty-state-icon"><i class="fas fa-envelope-open"></i></div>
+                    <div class="empty-state-title">Invitation Management</div>
+                    <div class="empty-state-message">
+                        When you receive an event invitation via email, you can accept or decline it using the links in the email.
+                        If you have an invitation ID, you can use it to respond directly.
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+</script>
+
+

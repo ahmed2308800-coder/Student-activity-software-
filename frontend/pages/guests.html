@@ -1,0 +1,152 @@
+<div class="page-header">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <h1>Guest Management</h1>
+            <p>Invite and manage guest speakers</p>
+        </div>
+    </div>
+</div>
+
+<div id="guestsContainer">
+    <div class="empty-state">
+        <div class="empty-state-icon"><i class="fas fa-spinner fa-spin"></i></div>
+        <div class="empty-state-message">Loading guests...</div>
+    </div>
+</div>
+
+<script>
+async function initPage() {
+    if (!requireRole(['club_representative', 'admin'])) return;
+    await loadGuests();
+}
+
+async function loadGuests() {
+    try {
+        showLoading();
+        // Get user's events first
+        const eventsResponse = await api.getEvents();
+        
+        if (eventsResponse.success && eventsResponse.data.events) {
+            const myEvents = eventsResponse.data.events.filter(e => 
+                e.createdBy == AppState.user.id || AppState.role === 'admin'
+            );
+            
+            if (myEvents.length === 0) {
+                showEmptyState('No events found. Create an event first to invite guests.');
+                return;
+            }
+            
+            renderGuestsView(myEvents);
+        } else {
+            showEmptyState('No events found.');
+        }
+    } catch (error) {
+        console.error('Error loading guests:', error);
+        showToast('error', 'Error', 'Failed to load guests.');
+        showEmptyState();
+    } finally {
+        hideLoading();
+    }
+}
+
+function renderGuestsView(events) {
+    const container = document.getElementById('guestsContainer');
+    
+    container.innerHTML = `
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Events with Guests</h3>
+            </div>
+            <div class="card-body">
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Event</th>
+                                <th>Date</th>
+                                <th>Guests</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${events.map(event => `
+                                <tr>
+                                    <td>
+                                        <a href="#events/view?id=${event.id}" onclick="loadPage('events/view?id=' + ${event.id})" style="font-weight: 600; color: var(--primary-color); text-decoration: none;">
+                                            ${escapeHtml(event.title)}
+                                        </a>
+                                    </td>
+                                    <td>${formatDate(event.date)}</td>
+                                    <td id="guests-count-${event.id}">Loading...</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary" onclick="inviteGuest(${event.id})">
+                                            <i class="fas fa-user-plus"></i> Invite Guest
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Load guest counts for each event
+    events.forEach(async (event) => {
+        try {
+            const guestsResponse = await api.getEventGuests(event.id);
+            const countEl = document.getElementById(`guests-count-${event.id}`);
+            if (countEl) {
+                const count = guestsResponse.success ? (guestsResponse.data.guests?.length || 0) : 0;
+                countEl.textContent = count;
+            }
+        } catch (error) {
+            const countEl = document.getElementById(`guests-count-${event.id}`);
+            if (countEl) countEl.textContent = '0';
+        }
+    });
+}
+
+function showEmptyState(message = 'No guests found.') {
+    const container = document.getElementById('guestsContainer');
+    container.innerHTML = `
+        <div class="empty-state">
+            <div class="empty-state-icon"><i class="fas fa-user-friends"></i></div>
+            <div class="empty-state-title">No Guests</div>
+            <div class="empty-state-message">${message}</div>
+            <button class="btn btn-primary" onclick="loadPage('events/create')" style="margin-top: 1rem;">
+                Create Event
+            </button>
+        </div>
+    `;
+}
+
+async function inviteGuest(eventId) {
+    const email = prompt('Enter guest email:');
+    if (!email) return;
+    
+    const name = prompt('Enter guest name (optional):') || '';
+    
+    if (!validateEmail(email)) {
+        showToast('error', 'Invalid Email', 'Please enter a valid email address.');
+        return;
+    }
+    
+    try {
+        showLoading();
+        const response = await api.inviteGuest(eventId, { email, name });
+        
+        if (response.success) {
+            showToast('success', 'Guest Invited', 'Guest invitation sent successfully.');
+            await loadGuests();
+        }
+    } catch (error) {
+        showToast('error', 'Error', error.message || 'Failed to invite guest.');
+    } finally {
+        hideLoading();
+    }
+}
+</script>
+
+

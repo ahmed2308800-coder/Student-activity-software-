@@ -1,0 +1,367 @@
+<div class="page-header">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <h1>My Events</h1>
+            <p>Manage your created events</p>
+        </div>
+            <button class="btn btn-primary" onclick="if(typeof loadPage === 'function') loadPage('events/create'); else window.location.hash = 'events/create';">
+                <i class="fas fa-plus"></i> Create Event
+            </button>
+    </div>
+</div>
+
+<div id="myEventsContainer">
+    <div class="empty-state">
+        <div class="empty-state-icon"><i class="fas fa-spinner fa-spin"></i></div>
+        <div class="empty-state-message">Loading events...</div>
+    </div>
+</div>
+
+<script>
+async function initPage() {
+    // Wait for DOM to be ready and check for required elements
+    await waitForDOMReady();
+
+    if (typeof requireRole === 'function' && !requireRole(['club_representative', 'admin'])) {
+        return;
+    }
+
+    await loadMyEvents();
+}
+
+async function waitForDOMReady() {
+    console.log('waitForDOMReady: Starting to wait for myEventsContainer');
+    // Wait for the main container to be available
+    for (let i = 0; i < 50; i++) { // Max 5 seconds
+        const container = document.getElementById('myEventsContainer');
+        if (container) {
+            console.log('waitForDOMReady: myEventsContainer found after', i * 100, 'ms');
+            return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    console.warn('waitForDOMReady: myEventsContainer not found after waiting');
+}
+
+async function loadMyEvents() {
+    try {
+        // Wait for container to be available
+        let container = null;
+        for (let i = 0; i < 20; i++) { // Max 2 seconds
+            container = document.getElementById('myEventsContainer');
+            if (container) break;
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        if (!container) {
+            console.warn('loadMyEvents: myEventsContainer not found after waiting');
+            return;
+        }
+        
+        if (typeof showLoading === 'function') {
+            showLoading();
+        }
+        
+        if (typeof api === 'undefined' || typeof AppState === 'undefined') {
+            console.error('API or AppState not available');
+            showEmptyState();
+            return;
+        }
+        
+        const response = await api.getEvents();
+        
+        if (response.success && response.data.events) {
+            // Filter events created by current user
+            const myEvents = response.data.events.filter(e => e.createdBy == AppState.user.id);
+            renderMyEvents(myEvents);
+        } else {
+            showEmptyState();
+        }
+    } catch (error) {
+        console.error('Error loading my events:', error);
+        if (typeof showToast === 'function') {
+            showToast('error', 'Error', 'Failed to load events.');
+        }
+        showEmptyState();
+    } finally {
+        if (typeof hideLoading === 'function') {
+            hideLoading();
+        }
+    }
+}
+
+function renderMyEvents(events) {
+    const container = safeGetElement ? safeGetElement('myEventsContainer') : document.getElementById('myEventsContainer');
+
+    if (!container) {
+        console.warn('renderMyEvents: myEventsContainer not found, skipping render');
+        return;
+            }
+        }, 100);
+        return;
+    }
+    
+    if (events.length === 0) {
+        showEmptyState();
+        return;
+    }
+    
+    const escapeHtml = window.escapeHtml || function(str) { 
+        if (!str) return '';
+        return String(str).replace(/[&<>"']/g, m => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'})[m]); 
+    };
+    const formatDate = window.formatDate || function(d) { 
+        if (!d) return 'N/A';
+        return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    };
+    const formatStatus = window.formatStatus || function(s) { 
+        const statusMap = { 'pending': { label: 'Pending', class: 'warning' }, 'approved': { label: 'Approved', class: 'success' }, 'rejected': { label: 'Rejected', class: 'danger' }, 'cancelled': { label: 'Cancelled', class: 'secondary' } };
+        const statusInfo = statusMap[s] || { label: s, class: 'primary' };
+        return `<span class="badge badge-${statusInfo.class}">${statusInfo.label}</span>`;
+    };
+    
+    container.innerHTML = `
+        <div class="card">
+            <div class="card-body">
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Event Title</th>
+                                <th>Date</th>
+                                <th>Status</th>
+                                <th>Registrations</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${events.map(event => `
+                                <tr>
+                                    <td>
+                                        <a href="#events/view?id=${event.id || event._id}" onclick="if(typeof loadPage === 'function') loadPage('events/view?id=' + ${event.id || event._id}); else window.location.hash = 'events/view?id=' + ${event.id || event._id};" style="font-weight: 600; color: var(--primary-color); text-decoration: none;">
+                                            ${escapeHtml(event.title || 'Untitled Event')}
+                                        </a>
+                                    </td>
+                                    <td>${formatDate(event.date || new Date())}</td>
+                                    <td>${formatStatus(event.status || 'pending')}</td>
+                                    <td>${event.registrationCount || 0} / ${event.maxSeats}</td>
+                                    <td>
+                                        <div style="display: flex; gap: 0.5rem;">
+                                            <button class="btn btn-sm btn-outline" onclick="if(typeof loadPage === 'function') loadPage('events/view?id=' + ${event.id || event._id}); else window.location.hash = 'events/view?id=' + ${event.id || event._id};">
+                                                <i class="fas fa-eye"></i> View
+                                            </button>
+                                            ${(event.status || 'pending') === 'pending' ? `
+                                                <button class="btn btn-sm btn-outline" onclick="if(typeof editEvent === 'function') editEvent(${event.id || event._id});">
+                                                    <i class="fas fa-edit"></i> Edit
+                                                </button>
+                                                <button class="btn btn-sm btn-danger" onclick="if(typeof deleteEvent === 'function') deleteEvent(${event.id || event._id});">
+                                                    <i class="fas fa-trash"></i> Delete
+                                                </button>
+                                            ` : ''}
+                                            ${(event.status || '') === 'approved' ? `
+                                                <button class="btn btn-sm btn-primary" onclick="if(typeof viewRegistrations === 'function') viewRegistrations(${event.id || event._id});">
+                                                    <i class="fas fa-users"></i> Registrations
+                                                </button>
+                                            ` : ''}
+                                        </div>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function showEmptyState() {
+    const container = safeGetElement ? safeGetElement('myEventsContainer') : document.getElementById('myEventsContainer');
+    if (!container) {
+        console.error('myEventsContainer not found');
+        // Try again after a short delay
+        setTimeout(() => {
+            const retryContainer = document.getElementById('myEventsContainer');
+            if (retryContainer) {
+                showEmptyState();
+            }
+        }, 100);
+        return;
+    }
+    container.innerHTML = `
+        <div class="empty-state">
+            <div class="empty-state-icon"><i class="fas fa-calendar"></i></div>
+            <div class="empty-state-title">No Events</div>
+            <div class="empty-state-message">You haven't created any events yet.</div>
+            <button class="btn btn-primary" onclick="if(typeof loadPage === 'function') loadPage('events/create'); else window.location.hash = 'events/create';" style="margin-top: 1rem;">
+                Create Your First Event
+            </button>
+        </div>
+    `;
+}
+
+function editEvent(eventId) {
+    if (typeof loadPage === 'function') {
+        loadPage(`events/edit?id=${eventId}`);
+    } else {
+        window.location.hash = `events/edit?id=${eventId}`;
+    }
+}
+
+async function viewRegistrations(eventId) {
+    try {
+        showLoading();
+
+        // Get event details first to check permissions
+        const eventResponse = await api.getEventById(eventId);
+        if (!eventResponse.success || !eventResponse.data.event) {
+            showToast('error', 'Error', 'Event not found.');
+            return;
+        }
+
+        const event = eventResponse.data.event;
+
+        // Check if user owns this event
+        if (event.createdBy != AppState.user.id && AppState.role !== 'admin') {
+            showToast('error', 'Access Denied', 'You can only view registrations for your own events.');
+            return;
+        }
+
+        // Get registrations for this event
+        const regResponse = await api.getEventRegistrations(eventId);
+        if (regResponse.success && regResponse.data.registrations) {
+            const registrations = regResponse.data.registrations;
+            showRegistrationsModal(event, registrations);
+        } else {
+            showToast('info', 'No Registrations', 'No one has registered for this event yet.');
+        }
+    } catch (error) {
+        console.error('Error loading registrations:', error);
+        showToast('error', 'Error', 'Failed to load registrations.');
+    } finally {
+        hideLoading();
+    }
+}
+
+function showRegistrationsModal(event, registrations) {
+    // Create modal HTML
+    const modalHtml = `
+        <div id="registrationsModal" class="modal-overlay" style="
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); display: flex; align-items: center;
+            justify-content: center; z-index: 1000;">
+            <div class="modal-content" style="
+                background: white; border-radius: 8px; padding: 0;
+                max-width: 800px; width: 90%; max-height: 80vh; overflow: hidden;">
+                <div class="modal-header" style="
+                    padding: 1.5rem; border-bottom: 1px solid var(--border-color);
+                    display: flex; justify-content: between; align-items: center;">
+                    <div>
+                        <h3 style="margin: 0; color: var(--text-primary);">
+                            Registrations for "${escapeHtml(event.title)}"
+                        </h3>
+                        <p style="margin: 0.5rem 0 0 0; color: var(--text-secondary); font-size: 0.875rem;">
+                            ${registrations.length} registration${registrations.length !== 1 ? 's' : ''}
+                        </p>
+                    </div>
+                    <button onclick="closeRegistrationsModal()" style="
+                        background: none; border: none; font-size: 1.5rem;
+                        cursor: pointer; color: var(--text-secondary);">&times;</button>
+                </div>
+                <div class="modal-body" style="
+                    padding: 1.5rem; max-height: 60vh; overflow-y: auto;">
+                    ${registrations.length > 0 ? `
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Email</th>
+                                        <th>Registration Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${registrations.map(reg => `
+                                        <tr>
+                                            <td>${escapeHtml(reg.user?.name || 'N/A')}</td>
+                                            <td>${escapeHtml(reg.user?.email || 'N/A')}</td>
+                                            <td>${formatDate(reg.created_at)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    ` : `
+                        <div class="empty-state">
+                            <div class="empty-state-icon"><i class="fas fa-users"></i></div>
+                            <div class="empty-state-message">No registrations yet</div>
+                        </div>
+                    `}
+                </div>
+                <div class="modal-footer" style="
+                    padding: 1.5rem; border-top: 1px solid var(--border-color);
+                    display: flex; justify-content: flex-end;">
+                    <button onclick="closeRegistrationsModal()" class="btn btn-primary">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Add modal to body
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // Add click outside to close
+    setTimeout(() => {
+        const modal = document.getElementById('registrationsModal');
+        if (modal) {
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    closeRegistrationsModal();
+                }
+            });
+        }
+    }, 100);
+}
+
+function closeRegistrationsModal() {
+    const modal = document.getElementById('registrationsModal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+async function deleteEvent(eventId) {
+    if (!confirm('Are you sure you want to delete this event? This action cannot be undone.')) return;
+    
+    try {
+        if (typeof showLoading === 'function') {
+            showLoading();
+        }
+        
+        if (typeof api === 'undefined') {
+            throw new Error('API service not available');
+        }
+        
+        const response = await api.deleteEvent(eventId);
+        
+        if (response.success) {
+            if (typeof showToast === 'function') {
+                showToast('success', 'Deleted', 'Event has been deleted successfully.');
+            }
+            await loadMyEvents();
+        }
+    } catch (error) {
+        console.error('Error deleting event:', error);
+        if (typeof showToast === 'function') {
+            showToast('error', 'Error', error.message || 'Failed to delete event.');
+        }
+    } finally {
+        if (typeof hideLoading === 'function') {
+            hideLoading();
+        }
+    }
+}
+</script>
+

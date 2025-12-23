@@ -1,0 +1,213 @@
+<div class="page-header">
+    <h1>My Registrations</h1>
+    <p>View and manage your event registrations</p>
+</div>
+
+<div id="registrationsContainer">
+    <div class="empty-state">
+        <div class="empty-state-icon"><i class="fas fa-spinner fa-spin"></i></div>
+        <div class="empty-state-message">Loading registrations...</div>
+    </div>
+</div>
+
+<script>
+async function initPage() {
+    // Wait for DOM to be ready
+    await waitForDOMReady();
+
+    // Check authentication before loading registrations
+    if (!AppState.token) {
+        console.log('Registrations: No authentication token found, redirecting to login');
+        if (typeof loadPage === 'function') {
+            loadPage('login');
+        }
+        return;
+    }
+
+    await loadRegistrations();
+}
+
+async function waitForDOMReady() {
+    // Wait for the main container to be available
+    for (let i = 0; i < 50; i++) { // Max 5 seconds
+        if (document.getElementById('registrationsContainer')) {
+            return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    console.warn('registrationsContainer not found after waiting');
+}
+
+async function loadRegistrations() {
+    try {
+        showLoading();
+        const response = await api.getMyRegistrations();
+        
+        if (response.success && response.data.registrations) {
+            const registrations = response.data.registrations;
+            renderRegistrations(registrations);
+        } else {
+            showEmptyState();
+        }
+    } catch (error) {
+        console.error('Error loading registrations:', error);
+        // Handle authentication errors
+        if (error.message && (error.message.includes('No token provided') || error.message.includes('Unauthorized'))) {
+            console.log('Registrations: Authentication error, redirecting to login');
+            if (typeof loadPage === 'function') {
+                loadPage('login');
+            }
+            return;
+        }
+        showToast('error', 'Error', 'Failed to load registrations.');
+        showEmptyState();
+    } finally {
+        hideLoading();
+    }
+}
+
+function renderRegistrations(registrations) {
+    const container = document.getElementById('registrationsContainer');
+    if (!container) {
+        console.warn('renderRegistrations: registrationsContainer not found');
+        return;
+    }
+
+    if (registrations.length === 0) {
+        showEmptyState();
+        return;
+    }
+    
+    // Separate upcoming and past events
+    const now = new Date();
+    const upcoming = registrations.filter(r => new Date(r.event?.date) > now);
+    const past = registrations.filter(r => new Date(r.event?.date) <= now);
+    
+    container.innerHTML = `
+        ${upcoming.length > 0 ? `
+            <div class="card" style="margin-bottom: 2rem;">
+                <div class="card-header">
+                    <h3 class="card-title">Upcoming Events</h3>
+                </div>
+                <div class="card-body">
+                    <div class="table-container">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Event</th>
+                                    <th>Date</th>
+                                    <th>Location</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${upcoming.map(reg => `
+                                    <tr>
+                                        <td>
+                                            <a href="#events/view?id=${reg.eventId}" onclick="loadPage('events/view?id=' + ${reg.eventId})" style="font-weight: 600; color: var(--primary-color); text-decoration: none;">
+                                                ${escapeHtml(reg.event?.title || 'N/A')}
+                                            </a>
+                                        </td>
+                                        <td>${formatDate(reg.event?.date)}</td>
+                                        <td>${escapeHtml(reg.event?.location?.name || 'TBA')}</td>
+                                        <td>${formatStatus(reg.event?.status || 'approved')}</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-danger" onclick="cancelRegistration(${reg.eventId})">
+                                                <i class="fas fa-times"></i> Cancel
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        ` : ''}
+        
+        ${past.length > 0 ? `
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Past Events</h3>
+                </div>
+                <div class="card-body">
+                    <div class="table-container">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Event</th>
+                                    <th>Date</th>
+                                    <th>Location</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${past.map(reg => `
+                                    <tr>
+                                        <td>
+                                            <a href="#events/view?id=${reg.eventId}" onclick="loadPage('events/view?id=' + ${reg.eventId})" style="font-weight: 600; color: var(--primary-color); text-decoration: none;">
+                                                ${escapeHtml(reg.event?.title || 'N/A')}
+                                            </a>
+                                        </td>
+                                        <td>${formatDate(reg.event?.date)}</td>
+                                        <td>${escapeHtml(reg.event?.location?.name || 'TBA')}</td>
+                                        <td>${formatStatus(reg.event?.status || 'approved')}</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-primary" onclick="loadPage('feedbacks?eventId=' + ${reg.eventId})">
+                                                <i class="fas fa-comment"></i> Feedback
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        ` : ''}
+        
+        ${upcoming.length === 0 && past.length === 0 ? showEmptyState() : ''}
+    `;
+}
+
+function showEmptyState() {
+    const container = document.getElementById('registrationsContainer');
+    if (!container) {
+        console.warn('showEmptyState: registrationsContainer not found');
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="empty-state">
+            <div class="empty-state-icon"><i class="fas fa-list"></i></div>
+            <div class="empty-state-title">No Registrations</div>
+            <div class="empty-state-message">You haven't registered for any events yet.</div>
+            <button class="btn btn-primary" onclick="loadPage('events')" style="margin-top: 1rem;">
+                Browse Events
+            </button>
+        </div>
+    `;
+}
+
+async function cancelRegistration(eventId) {
+    if (!confirm('Are you sure you want to cancel your registration?')) return;
+    
+    try {
+        showLoading();
+        const response = await api.cancelRegistration(eventId);
+        
+        if (response.success) {
+            showToast('success', 'Cancelled', 'Your registration has been cancelled.');
+            await loadRegistrations();
+        }
+    } catch (error) {
+        showToast('error', 'Error', error.message || 'Failed to cancel registration.');
+    } finally {
+        hideLoading();
+    }
+}
+</script>
+
+

@@ -1,0 +1,389 @@
+<div class="page-header">
+    <h1>Dashboard</h1>
+    <p id="welcomeMessage">Welcome back!</p>
+</div>
+
+<div id="dashboardContent">
+    <div class="stats-grid" id="statsGrid">
+        <!-- Stats will be loaded here -->
+    </div>
+
+    <div class="grid grid-2" style="margin-top: 2rem;">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Recent Events</h3>
+                <a href="#events" onclick="loadPage('events')" style="color: var(--primary-color); text-decoration: none; font-size: 0.875rem;">
+                    View All
+                </a>
+            </div>
+            <div class="card-body">
+                <div id="recentEvents">
+                    <div class="empty-state">
+                        <div class="empty-state-icon"><i class="fas fa-calendar"></i></div>
+                        <div class="empty-state-message">Loading events...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Recent Notifications</h3>
+                <a href="#notifications" onclick="loadPage('notifications')" style="color: var(--primary-color); text-decoration: none; font-size: 0.875rem;">
+                    View All
+                </a>
+            </div>
+            <div class="card-body">
+                <div id="recentNotifications">
+                    <div class="empty-state">
+                        <div class="empty-state-icon"><i class="fas fa-bell"></i></div>
+                        <div class="empty-state-message">Loading notifications...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function initPage() {
+    try {
+        // Skip dashboard loading if user is logging out
+        if (window.isLoggingOut) {
+            console.log('Skipping dashboard load during logout');
+            return;
+        }
+
+        // Update welcome message
+        const welcomeMsg = document.getElementById('welcomeMessage');
+        if (welcomeMsg && typeof AppState !== 'undefined' && AppState.user) {
+            const userName = AppState.user.name || AppState.user.email || 'User';
+            welcomeMsg.textContent = `Welcome back, ${userName}!`;
+        }
+        await loadDashboard();
+    } catch (error) {
+        console.error('Dashboard init error:', error);
+        if (typeof showToast === 'function') {
+            showToast('error', 'Error', 'Failed to load dashboard.');
+        }
+    }
+}
+
+async function loadDashboard() {
+    try {
+        if (typeof showLoading === 'function') {
+            showLoading();
+        }
+
+        // Check if AppState is available
+        if (typeof AppState === 'undefined') {
+            console.error('AppState not available');
+            return;
+        }
+
+        // Check authentication before making API calls
+        if (!AppState.token) {
+            // Only log if not during logout process
+            if (!window.isLoggingOut) {
+                console.log('Dashboard: No authentication token found, redirecting to login');
+            }
+            if (typeof loadPage === 'function') {
+                loadPage('login');
+            }
+            return;
+        }
+
+        // Load stats based on role
+        if (AppState.role === 'admin') {
+            await loadAdminDashboard();
+        } else if (AppState.role === 'club_representative') {
+            await loadClubRepDashboard();
+        } else {
+            await loadStudentDashboard();
+        }
+
+        // Load recent events
+        await loadRecentEvents();
+
+        // Load recent notifications
+        await loadRecentNotifications();
+
+    } catch (error) {
+        console.error('Error loading dashboard:', error);
+        // If we get authentication errors, redirect to login
+        if (error.message && (error.message.includes('No token provided') || error.message.includes('Unauthorized'))) {
+            console.log('Authentication error, redirecting to login');
+            if (typeof loadPage === 'function') {
+                loadPage('login');
+            }
+            return;
+        }
+        if (typeof showToast === 'function') {
+            showToast('error', 'Error', 'Failed to load dashboard data.');
+        }
+    } finally {
+        if (typeof hideLoading === 'function') {
+            hideLoading();
+        }
+    }
+}
+
+async function loadAdminDashboard() {
+    try {
+        const response = await api.getDashboardStats();
+        if (response.success && response.data) {
+            const stats = response.data;
+            const statsGrid = document.getElementById('statsGrid');
+
+            statsGrid.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div>
+                            <div class="stat-value">${stats.users?.total || 0}</div>
+                            <div class="stat-label">Total Users</div>
+                        </div>
+                        <div class="stat-icon primary">
+                            <i class="fas fa-users"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div>
+                            <div class="stat-value">${stats.events?.total || 0}</div>
+                            <div class="stat-label">Total Events</div>
+                        </div>
+                        <div class="stat-icon info">
+                            <i class="fas fa-calendar"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div>
+                            <div class="stat-value">${stats.events?.breakdown?.pending || 0}</div>
+                            <div class="stat-label">Pending Events</div>
+                        </div>
+                        <div class="stat-icon warning">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div>
+                            <div class="stat-value">${stats.registrations?.total || 0}</div>
+                            <div class="stat-label">Total Registrations</div>
+                        </div>
+                        <div class="stat-icon success">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading admin stats:', error);
+        // Handle authentication errors
+        if (error.message && (error.message.includes('No token provided') || error.message.includes('Unauthorized'))) {
+            throw error; // Re-throw to be handled by loadDashboard
+        }
+    }
+}
+
+async function loadClubRepDashboard() {
+    try {
+        const response = await api.getMyRegistrations();
+        const myEventsResponse = await api.getEvents({ status: 'approved' });
+
+        const statsGrid = document.getElementById('statsGrid');
+        const myRegistrations = response.success ? response.data.registrations?.length || 0 : 0;
+        const myEvents = myEventsResponse.success ? myEventsResponse.data.events?.filter(e => e.createdBy == AppState.user.id)?.length || 0 : 0;
+
+        statsGrid.innerHTML = `
+            <div class="stat-card">
+                <div class="stat-header">
+                    <div>
+                        <div class="stat-value">${myEvents}</div>
+                        <div class="stat-label">My Events</div>
+                    </div>
+                    <div class="stat-icon primary">
+                        <i class="fas fa-calendar"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <div>
+                        <div class="stat-value">${myRegistrations}</div>
+                        <div class="stat-label">My Registrations</div>
+                    </div>
+                    <div class="stat-icon success">
+                        <i class="fas fa-list"></i>
+                    </div>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Error loading club rep stats:', error);
+        // Handle authentication errors
+        if (error.message && (error.message.includes('No token provided') || error.message.includes('Unauthorized'))) {
+            throw error; // Re-throw to be handled by loadDashboard
+        }
+    }
+}
+
+async function loadStudentDashboard() {
+    try {
+        const response = await api.getMyRegistrations();
+        const statsGrid = document.getElementById('statsGrid');
+        const registrations = response.success ? response.data.registrations?.length || 0 : 0;
+
+        statsGrid.innerHTML = `
+            <div class="stat-card">
+                <div class="stat-header">
+                    <div>
+                        <div class="stat-value">${registrations}</div>
+                        <div class="stat-label">My Registrations</div>
+                    </div>
+                    <div class="stat-icon primary">
+                        <i class="fas fa-list"></i>
+                    </div>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Error loading student stats:', error);
+        // Handle authentication errors
+        if (error.message && (error.message.includes('No token provided') || error.message.includes('Unauthorized'))) {
+            throw error; // Re-throw to be handled by loadDashboard
+        }
+    }
+}
+
+async function loadRecentEvents() {
+    try {
+        if (typeof api === 'undefined') {
+            console.error('API service not available');
+            return;
+        }
+        
+        const response = await api.getEvents({ limit: 5 });
+        const container = document.getElementById('recentEvents');
+        
+        if (!container) return;
+        
+        if (response.success && response.data.events?.length > 0) {
+            const events = response.data.events;
+            const escapeHtml = window.escapeHtml || function(str) { return String(str).replace(/[&<>"']/g, m => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'})[m]); };
+            const formatDate = window.formatDate || function(d) { return new Date(d).toLocaleDateString(); };
+            const formatStatus = window.formatStatus || function(s) { return `<span class="badge">${s}</span>`; };
+            
+            container.innerHTML = events.map(event => {
+                const eventId = event.id || event._id;
+                return `
+                    <div style="padding: 1rem; border-bottom: 1px solid var(--border-color);">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                            <a href="#events/view?id=${eventId}" onclick="if(typeof loadPage === 'function') loadPage('events/view?id=' + ${eventId})" style="font-weight: 600; color: var(--primary-color); text-decoration: none;">
+                                ${escapeHtml(event.title || 'Untitled')}
+                            </a>
+                            ${formatStatus(event.status || 'pending')}
+                        </div>
+                        <div style="font-size: 0.875rem; color: var(--text-secondary);">
+                            <i class="fas fa-calendar"></i> ${formatDate(event.date || new Date())}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } else {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon"><i class="fas fa-calendar"></i></div>
+                    <div class="empty-state-message">No events found</div>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading recent events:', error);
+        // Handle authentication errors
+        if (error.message && (error.message.includes('No token provided') || error.message.includes('Unauthorized'))) {
+            throw error; // Re-throw to be handled by loadDashboard
+        }
+        const container = document.getElementById('recentEvents');
+        if (container) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                    <div class="empty-state-message">Failed to load events</div>
+                </div>
+            `;
+        }
+    }
+}
+
+async function loadRecentNotifications() {
+    try {
+        if (typeof api === 'undefined') {
+            console.error('API service not available');
+            return;
+        }
+
+        // Check authentication before making API call
+        if (!AppState.token) {
+            console.log('loadRecentNotifications: No token, skipping');
+            return;
+        }
+
+        const response = await api.getNotifications(5, 0);
+        const container = document.getElementById('recentNotifications');
+
+        if (!container) return;
+
+        if (response.success && response.data.notifications?.length > 0) {
+            const notifications = response.data.notifications;
+            const escapeHtml = window.escapeHtml || function(str) { return String(str).replace(/[&<>"']/g, m => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'})[m]); };
+            const getTimeAgo = window.getTimeAgo || function(d) {
+                const diff = Date.now() - new Date(d).getTime();
+                const mins = Math.floor(diff / 60000);
+                if (mins < 60) return `${mins}m ago`;
+                const hours = Math.floor(mins / 60);
+                if (hours < 24) return `${hours}h ago`;
+                return `${Math.floor(hours / 24)}d ago`;
+            };
+
+            container.innerHTML = notifications.map(notif => `
+                <div style="padding: 1rem; border-bottom: 1px solid var(--border-color);">
+                    <div style="font-weight: 600; margin-bottom: 0.25rem;">${escapeHtml(notif.title || 'Notification')}</div>
+                    <div style="font-size: 0.875rem; color: var(--text-secondary);">${escapeHtml(notif.message || '')}</div>
+                    <div style="font-size: 0.75rem; color: var(--text-light); margin-top: 0.5rem;">
+                        ${getTimeAgo(notif.created_at || new Date())}
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon"><i class="fas fa-bell"></i></div>
+                    <div class="empty-state-message">No notifications</div>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading recent notifications:', error);
+        // Handle authentication errors
+        if (error.message && (error.message.includes('No token provided') || error.message.includes('Unauthorized'))) {
+            throw error; // Re-throw to be handled by loadDashboard
+        }
+        const container = document.getElementById('recentNotifications');
+        if (container) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                    <div class="empty-state-message">Failed to load notifications</div>
+                </div>
+            `;
+        }
+    }
+}
+</script>
+

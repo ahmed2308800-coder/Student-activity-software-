@@ -1,0 +1,249 @@
+<div id="eventViewContainer">
+    <div class="empty-state">
+        <div class="empty-state-icon"><i class="fas fa-spinner fa-spin"></i></div>
+        <div class="empty-state-message">Loading event...</div>
+    </div>
+</div>
+
+<script>
+// Declare global variables defensively to prevent redeclaration errors
+if (typeof currentEvent === 'undefined') {
+    var currentEvent = null;
+}
+
+async function initPage() {
+    // Check authentication before loading event
+    if (!AppState.token) {
+        console.log('Event View: No authentication token found, redirecting to login');
+        if (typeof loadPage === 'function') {
+            loadPage('login');
+        }
+        return;
+    }
+
+    const urlParams = new URLSearchParams(window.location.hash.split('?')[1]);
+    const eventId = urlParams.get('id');
+
+    if (!eventId) {
+        showToast('error', 'Error', 'Event ID is required.');
+        loadPage('events');
+        return;
+    }
+
+    await loadEvent(eventId);
+}
+
+async function loadEvent(eventId) {
+    try {
+        showLoading();
+        const response = await api.getEventById(eventId);
+        
+        if (response.success && response.data.event) {
+            currentEvent = response.data.event;
+            renderEvent(currentEvent);
+        } else {
+            showToast('error', 'Error', 'Event not found.');
+            loadPage('events');
+        }
+    } catch (error) {
+        console.error('Error loading event:', error);
+        // Handle authentication errors
+        if (error.message && (error.message.includes('No token provided') || error.message.includes('Unauthorized'))) {
+            console.log('Event View: Authentication error, redirecting to login');
+            if (typeof loadPage === 'function') {
+                loadPage('login');
+            }
+            return;
+        }
+        showToast('error', 'Error', 'Failed to load event.');
+        loadPage('events');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function renderEvent(event) {
+    const container = document.getElementById('eventViewContainer');
+    
+    // Check registration status
+    let isRegistered = false;
+    let registrationCheck = null;
+    try {
+        registrationCheck = await api.checkRegistration(event.id);
+        isRegistered = registrationCheck.success && registrationCheck.data.isRegistered;
+    } catch (error) {
+        console.error('Error checking registration:', error);
+    }
+    
+    const canRegister = event.status === 'approved' && 
+                       !isRegistered && 
+                       new Date(event.date) > new Date() &&
+                       (event.availableSeats || event.maxSeats - (event.registrationCount || 0) > 0);
+    
+    const canEdit = (AppState.role === 'admin') || 
+                   (AppState.role === 'club_representative' && event.createdBy == AppState.user.id && event.status === 'pending');
+    
+    container.innerHTML = `
+        <div style="max-width: 900px; margin: 0 auto;">
+            <div style="margin-bottom: 1rem;">
+                <button class="btn btn-outline" onclick="loadPage('events')">
+                    <i class="fas fa-arrow-left"></i> Back to Events
+                </button>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h1 style="margin: 0 0 0.5rem 0;">${escapeHtml(event.title)}</h1>
+                        ${formatStatus(event.status)}
+                    </div>
+                    ${canEdit ? `
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn btn-sm btn-outline" onclick="editEvent(${event.id})">
+                                <i class="fas fa-edit"></i> Edit
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+                
+                <div class="card-body">
+                    <div style="margin-bottom: 2rem;">
+                        <h3 style="margin-bottom: 1rem;">Description</h3>
+                        <p style="color: var(--text-secondary); line-height: 1.8; white-space: pre-wrap;">
+                            ${escapeHtml(event.description || 'No description provided.')}
+                        </p>
+                    </div>
+                    
+                    <div class="grid grid-2" style="margin-bottom: 2rem;">
+                        <div>
+                            <h4 style="margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                                Date & Time
+                            </h4>
+                            <p style="font-size: 1.125rem; font-weight: 600;">
+                                <i class="fas fa-calendar"></i> ${formatDate(event.date)}
+                            </p>
+                        </div>
+                        <div>
+                            <h4 style="margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                                Location
+                            </h4>
+                            <p style="font-size: 1.125rem; font-weight: 600;">
+                                <i class="fas fa-map-marker-alt"></i> ${escapeHtml(event.location?.name || 'TBA')}
+                            </p>
+                            ${event.location?.address ? `
+                                <p style="color: var(--text-secondary); margin-top: 0.25rem;">
+                                    ${escapeHtml(event.location.address)}
+                                </p>
+                            ` : ''}
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-3" style="margin-bottom: 2rem;">
+                        <div>
+                            <h4 style="margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                                Registered
+                            </h4>
+                            <p style="font-size: 1.5rem; font-weight: 700;">
+                                ${event.registrationCount || 0} / ${event.maxSeats}
+                            </p>
+                        </div>
+                        <div>
+                            <h4 style="margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                                Available Seats
+                            </h4>
+                            <p style="font-size: 1.5rem; font-weight: 700; color: ${(event.availableSeats || event.maxSeats - (event.registrationCount || 0)) > 0 ? 'var(--success-color)' : 'var(--danger-color)'};">
+                                ${event.availableSeats || event.maxSeats - (event.registrationCount || 0)}
+                            </p>
+                        </div>
+                        ${event.category ? `
+                            <div>
+                                <h4 style="margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                                    Category
+                                </h4>
+                                <p style="font-size: 1.125rem; font-weight: 600;">
+                                    ${escapeHtml(event.category)}
+                                </p>
+                            </div>
+                        ` : ''}
+                    </div>
+                    
+                    ${AppState.role === 'student' ? `
+                        <div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid var(--border-color);">
+                            ${isRegistered ? `
+                                <div style="display: flex; gap: 1rem; align-items: center;">
+                                    <div style="flex: 1;">
+                                        <p style="color: var(--success-color); font-weight: 600;">
+                                            <i class="fas fa-check-circle"></i> You are registered for this event
+                                        </p>
+                                    </div>
+                                    <button class="btn btn-danger" onclick="cancelRegistration(${event.id})">
+                                        <i class="fas fa-times"></i> Cancel Registration
+                                    </button>
+                                </div>
+                            ` : canRegister ? `
+                                <button class="btn btn-primary btn-lg" onclick="registerForEvent(${event.id})" style="width: 100%;">
+                                    <i class="fas fa-user-plus"></i> Register for Event
+                                </button>
+                            ` : event.status !== 'approved' ? `
+                                <p style="color: var(--text-secondary); text-align: center;">
+                                    This event is ${event.status}. Registration is not available.
+                                </p>
+                            ` : new Date(event.date) <= new Date() ? `
+                                <p style="color: var(--text-secondary); text-align: center;">
+                                    This event has already occurred.
+                                </p>
+                            ` : `
+                                <p style="color: var(--danger-color); text-align: center;">
+                                    This event is full. No seats available.
+                                </p>
+                            `}
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+async function registerForEvent(eventId) {
+    if (!confirm('Are you sure you want to register for this event?')) return;
+    
+    try {
+        showLoading();
+        const response = await api.registerForEvent(eventId);
+        
+        if (response.success) {
+            showToast('success', 'Registered', 'You have successfully registered for this event.');
+            await loadEvent(eventId);
+        }
+    } catch (error) {
+        showToast('error', 'Error', error.message || 'Failed to register for event.');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function cancelRegistration(eventId) {
+    if (!confirm('Are you sure you want to cancel your registration?')) return;
+    
+    try {
+        showLoading();
+        const response = await api.cancelRegistration(eventId);
+        
+        if (response.success) {
+            showToast('success', 'Cancelled', 'Your registration has been cancelled.');
+            await loadEvent(eventId);
+        }
+    } catch (error) {
+        showToast('error', 'Error', error.message || 'Failed to cancel registration.');
+    } finally {
+        hideLoading();
+    }
+}
+
+function editEvent(eventId) {
+    loadPage(`events/edit?id=${eventId}`);
+}
+</script>
+
+

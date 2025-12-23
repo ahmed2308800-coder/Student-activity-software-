@@ -1,0 +1,143 @@
+<div class="page-header">
+    <h1>Pending Events</h1>
+    <p>Review and approve or reject event submissions</p>
+</div>
+
+<div id="pendingEventsContainer">
+    <div class="empty-state">
+        <div class="empty-state-icon"><i class="fas fa-spinner fa-spin"></i></div>
+        <div class="empty-state-message">Loading pending events...</div>
+    </div>
+</div>
+
+<script>
+async function initPage() {
+    if (!requireRole(['admin'])) return;
+    await loadPendingEvents();
+}
+
+async function loadPendingEvents() {
+    try {
+        showLoading();
+        const response = await api.getPendingEvents();
+        
+        if (response.success && response.data.events) {
+            const events = response.data.events;
+            renderPendingEvents(events);
+        } else {
+            showEmptyState();
+        }
+    } catch (error) {
+        console.error('Error loading pending events:', error);
+        showToast('error', 'Error', 'Failed to load pending events.');
+        showEmptyState();
+    } finally {
+        hideLoading();
+    }
+}
+
+function renderPendingEvents(events) {
+    const container = document.getElementById('pendingEventsContainer');
+    
+    if (events.length === 0) {
+        showEmptyState();
+        return;
+    }
+    
+    container.innerHTML = `
+        <div class="card">
+            <div class="card-body">
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Event Title</th>
+                                <th>Date</th>
+                                <th>Location</th>
+                                <th>Created By</th>
+                                <th>Max Seats</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${events.map(event => `
+                                <tr>
+                                    <td>
+                                        <a href="#events/view?id=${event.id}" onclick="loadPage('events/view?id=' + ${event.id})" style="font-weight: 600; color: var(--primary-color); text-decoration: none;">
+                                            ${escapeHtml(event.title)}
+                                        </a>
+                                    </td>
+                                    <td>${formatDate(event.date)}</td>
+                                    <td>${escapeHtml(event.location?.name || 'TBA')}</td>
+                                    <td>${escapeHtml(event.createdBy?.name || event.createdBy?.email || 'N/A')}</td>
+                                    <td>${event.maxSeats}</td>
+                                    <td>
+                                        <div style="display: flex; gap: 0.5rem;">
+                                            <button class="btn btn-sm btn-success" onclick="approveEvent(${event.id})">
+                                                <i class="fas fa-check"></i> Approve
+                                            </button>
+                                            <button class="btn btn-sm btn-danger" onclick="rejectEvent(${event.id})">
+                                                <i class="fas fa-times"></i> Reject
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function showEmptyState() {
+    const container = document.getElementById('pendingEventsContainer');
+    container.innerHTML = `
+        <div class="empty-state">
+            <div class="empty-state-icon"><i class="fas fa-check-circle"></i></div>
+            <div class="empty-state-title">No Pending Events</div>
+            <div class="empty-state-message">All events have been reviewed.</div>
+        </div>
+    `;
+}
+
+async function approveEvent(eventId) {
+    if (!confirm('Are you sure you want to approve this event?')) return;
+    
+    try {
+        showLoading();
+        const response = await api.approveEvent(eventId);
+        
+        if (response.success) {
+            showToast('success', 'Approved', 'Event has been approved successfully.');
+            await loadPendingEvents();
+        }
+    } catch (error) {
+        showToast('error', 'Error', error.message || 'Failed to approve event.');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function rejectEvent(eventId) {
+    const reason = prompt('Please provide a reason for rejection (optional):');
+    if (reason === null) return; // User cancelled
+    
+    try {
+        showLoading();
+        const response = await api.rejectEvent(eventId, reason || undefined);
+        
+        if (response.success) {
+            showToast('success', 'Rejected', 'Event has been rejected.');
+            await loadPendingEvents();
+        }
+    } catch (error) {
+        showToast('error', 'Error', error.message || 'Failed to reject event.');
+    } finally {
+        hideLoading();
+    }
+}
+</script>
+
+

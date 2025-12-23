@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAMS - Student Activities Management System</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📅</text></svg>">
+    <link rel="stylesheet" href="assets/css/main.css">
+    <link rel="stylesheet" href="assets/css/components.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar" id="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <i class="fas fa-calendar-alt"></i>
+                <span>SAMS</span>
+            </div>
+            <ul class="nav-menu" id="navMenu">
+                <!-- Dynamic menu items will be inserted here -->
+            </ul>
+            <div class="nav-user" id="navUser">
+                <!-- User info will be inserted here -->
+            </div>
+            <button class="nav-toggle" id="navToggle">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content" id="mainContent">
+        <!-- Content will be dynamically loaded here -->
+        <div class="welcome-screen" id="welcomeScreen">
+            <div class="welcome-content">
+                <h1>Welcome to SAMS</h1>
+                <p>Student Activities Management System</p>
+                <div class="welcome-actions">
+                    <a href="#login" class="btn btn-primary" onclick="if(typeof loadPage === 'function') loadPage('login'); else window.location.hash = 'login';">Login</a>
+                    <a href="#register" class="btn btn-secondary" onclick="if(typeof loadPage === 'function') loadPage('register'); else window.location.hash = 'register';">Register</a>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <p>Loading...</p>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Scripts -->
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/api.js"></script>
+    <script src="assets/js/connection-check.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/menu.js"></script>
+    <script src="assets/js/router.js"></script>
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/main.js"></script>
+    <script src="assets/js/global-functions.js"></script>
+</body>
+</html>
+

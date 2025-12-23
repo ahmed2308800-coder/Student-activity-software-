@@ -1,0 +1,260 @@
+<div class="page-header">
+    <h1>Edit Event</h1>
+    <p>Update event details</p>
+</div>
+
+<div class="card" style="max-width: 800px; margin: 0 auto;">
+    <div class="card-body">
+        <div id="editEventContainer">
+            <div class="empty-state">
+                <div class="empty-state-icon"><i class="fas fa-spinner fa-spin"></i></div>
+                <div class="empty-state-message">Loading event...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Declare global variables defensively to prevent redeclaration errors
+if (typeof currentEventId === 'undefined') {
+    var currentEventId = null;
+}
+
+async function initPage() {
+    const urlParams = new URLSearchParams(window.location.hash.split('?')[1]);
+    currentEventId = urlParams.get('id');
+    
+    if (!currentEventId) {
+        showToast('error', 'Error', 'Event ID is required.');
+        loadPage('events');
+        return;
+    }
+    
+    await loadEventForEdit(currentEventId);
+}
+
+async function loadEventForEdit(eventId) {
+    try {
+        showLoading();
+        const response = await api.getEventById(eventId);
+        
+        if (response.success && response.data.event) {
+            const event = response.data.event;
+            
+            // Check permissions
+            if (AppState.role !== 'admin' && event.createdBy != AppState.user.id) {
+                showToast('error', 'Access Denied', 'You can only edit your own events.');
+                loadPage('my-events');
+                return;
+            }
+            
+            if (event.status !== 'pending') {
+                showToast('error', 'Cannot Edit', 'You can only edit events that are pending approval.');
+                loadPage('my-events');
+                return;
+            }
+            
+            renderEditForm(event);
+        } else {
+            showToast('error', 'Error', 'Event not found.');
+            loadPage('events');
+        }
+    } catch (error) {
+        console.error('Error loading event:', error);
+        showToast('error', 'Error', 'Failed to load event.');
+        loadPage('events');
+    } finally {
+        hideLoading();
+    }
+}
+
+function renderEditForm(event) {
+    const container = document.getElementById('editEventContainer');
+    
+    // Format date for datetime-local input
+    const eventDate = new Date(event.date);
+    const dateString = eventDate.toISOString().slice(0, 16);
+    
+    container.innerHTML = `
+        <form id="editEventForm" onsubmit="handleUpdateEvent(event)">
+            <div class="form-group">
+                <label class="form-label required" for="editTitle">Event Title</label>
+                <input 
+                    type="text" 
+                    id="editTitle" 
+                    class="form-input" 
+                    value="${escapeHtml(event.title)}"
+                    required
+                    minlength="3"
+                    maxlength="200"
+                >
+                <div class="form-error" id="titleError"></div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label required" for="editDescription">Description</label>
+                <textarea 
+                    id="editDescription" 
+                    class="form-textarea" 
+                    required
+                    minlength="10"
+                >${escapeHtml(event.description || '')}</textarea>
+                <div class="form-error" id="descriptionError"></div>
+            </div>
+
+            <div class="grid grid-2">
+                <div class="form-group">
+                    <label class="form-label required" for="editDate">Event Date & Time</label>
+                    <input 
+                        type="datetime-local" 
+                        id="editDate" 
+                        class="form-input" 
+                        value="${dateString}"
+                        required
+                    >
+                    <div class="form-error" id="dateError"></div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label required" for="editMaxSeats">Maximum Seats</label>
+                    <input 
+                        type="number" 
+                        id="editMaxSeats" 
+                        class="form-input" 
+                        value="${event.maxSeats}"
+                        required
+                        min="1"
+                    >
+                    <div class="form-error" id="maxSeatsError"></div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="editCategory">Category</label>
+                <input 
+                    type="text" 
+                    id="editCategory" 
+                    class="form-input" 
+                    value="${escapeHtml(event.category || '')}"
+                >
+            </div>
+
+            <div class="form-group">
+                <label class="form-label required" for="editLocationName">Location Name</label>
+                <input 
+                    type="text" 
+                    id="editLocationName" 
+                    class="form-input" 
+                    value="${escapeHtml(event.location?.name || '')}"
+                    required
+                >
+                <div class="form-error" id="locationNameError"></div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="editLocationAddress">Location Address</label>
+                <input 
+                    type="text" 
+                    id="editLocationAddress" 
+                    class="form-input" 
+                    value="${escapeHtml(event.location?.address || '')}"
+                >
+            </div>
+
+            <div class="card-footer">
+                <button type="button" class="btn btn-outline" onclick="loadPage('my-events')">
+                    Cancel
+                </button>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i>
+                    Update Event
+                </button>
+            </div>
+        </form>
+    `;
+}
+
+async function handleUpdateEvent(e) {
+    e.preventDefault();
+    
+    const title = document.getElementById('editTitle').value.trim();
+    const description = document.getElementById('editDescription').value.trim();
+    const date = document.getElementById('editDate').value;
+    const maxSeats = parseInt(document.getElementById('editMaxSeats').value);
+    const category = document.getElementById('editCategory').value.trim();
+    const locationName = document.getElementById('editLocationName').value.trim();
+    const locationAddress = document.getElementById('editLocationAddress').value.trim();
+    
+    // Clear errors
+    ['titleError', 'descriptionError', 'dateError', 'maxSeatsError', 'locationNameError'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '';
+    });
+    
+    // Validation
+    let hasError = false;
+    
+    if (!title || title.length < 3) {
+        document.getElementById('titleError').textContent = 'Title must be at least 3 characters';
+        hasError = true;
+    }
+    
+    if (!description || description.length < 10) {
+        document.getElementById('descriptionError').textContent = 'Description must be at least 10 characters';
+        hasError = true;
+    }
+    
+    if (!date) {
+        document.getElementById('dateError').textContent = 'Event date is required';
+        hasError = true;
+    } else {
+        const eventDate = new Date(date);
+        if (eventDate < new Date()) {
+            document.getElementById('dateError').textContent = 'Event date must be in the future';
+            hasError = true;
+        }
+    }
+    
+    if (!maxSeats || maxSeats < 1) {
+        document.getElementById('maxSeatsError').textContent = 'Maximum seats must be at least 1';
+        hasError = true;
+    }
+    
+    if (!locationName) {
+        document.getElementById('locationNameError').textContent = 'Location name is required';
+        hasError = true;
+    }
+    
+    if (hasError) return;
+    
+    try {
+        showLoading();
+        const eventData = {
+            title,
+            description,
+            date: new Date(date).toISOString(),
+            maxSeats,
+            category: category || undefined,
+            location: {
+                name: locationName,
+                address: locationAddress || undefined
+            }
+        };
+        
+        const response = await api.updateEvent(currentEventId, eventData);
+        
+        if (response.success) {
+            showToast('success', 'Event Updated', 'Your event has been updated successfully.');
+            setTimeout(() => {
+                loadPage('my-events');
+            }, 1500);
+        }
+    } catch (error) {
+        showToast('error', 'Error', error.message || 'Failed to update event.');
+    } finally {
+        hideLoading();
+    }
+}
+</script>
+
+

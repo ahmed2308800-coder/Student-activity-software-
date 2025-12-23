@@ -1,0 +1,124 @@
+<div class="page-header">
+    <h1>User Management</h1>
+    <p>Manage system users and their roles</p>
+</div>
+
+<div id="usersContainer">
+    <div class="empty-state">
+        <div class="empty-state-icon"><i class="fas fa-spinner fa-spin"></i></div>
+        <div class="empty-state-message">Loading users...</div>
+    </div>
+</div>
+
+<script>
+async function initPage() {
+    if (!requireRole(['admin'])) return;
+    await loadUsers();
+}
+
+async function loadUsers() {
+    try {
+        showLoading();
+        const response = await api.getUsers();
+        
+        if (response.success && response.data.users) {
+            const users = response.data.users;
+            renderUsers(users);
+        } else {
+            showEmptyState();
+        }
+    } catch (error) {
+        console.error('Error loading users:', error);
+        showToast('error', 'Error', 'Failed to load users.');
+        showEmptyState();
+    } finally {
+        hideLoading();
+    }
+}
+
+function renderUsers(users) {
+    const container = document.getElementById('usersContainer');
+    
+    if (users.length === 0) {
+        showEmptyState();
+        return;
+    }
+    
+    container.innerHTML = `
+        <div class="card">
+            <div class="card-body">
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Role</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${users.map(user => `
+                                <tr>
+                                    <td>${escapeHtml(user.name || 'N/A')}</td>
+                                    <td>${escapeHtml(user.email)}</td>
+                                    <td>${formatRole(user.role)}</td>
+                                    <td>${formatDateOnly(user.created_at)}</td>
+                                    <td>
+                                        <div style="display: flex; gap: 0.5rem;">
+                                            <button class="btn btn-sm btn-outline" onclick="editUser(${user.id})">
+                                                <i class="fas fa-edit"></i> Edit
+                                            </button>
+                                            ${user.id != AppState.user.id ? `
+                                                <button class="btn btn-sm btn-danger" onclick="deleteUser(${user.id})">
+                                                    <i class="fas fa-trash"></i> Delete
+                                                </button>
+                                            ` : ''}
+                                        </div>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function showEmptyState() {
+    const container = document.getElementById('usersContainer');
+    container.innerHTML = `
+        <div class="empty-state">
+            <div class="empty-state-icon"><i class="fas fa-users"></i></div>
+            <div class="empty-state-title">No Users</div>
+            <div class="empty-state-message">No users found in the system.</div>
+        </div>
+    `;
+}
+
+function editUser(userId) {
+    showToast('info', 'Info', 'User editing feature coming soon.');
+}
+
+async function deleteUser(userId) {
+    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) return;
+    
+    try {
+        showLoading();
+        const response = await api.deleteUser(userId);
+        
+        if (response.success) {
+            showToast('success', 'Deleted', 'User has been deleted successfully.');
+            await loadUsers();
+        }
+    } catch (error) {
+        showToast('error', 'Error', error.message || 'Failed to delete user.');
+    } finally {
+        hideLoading();
+    }
+}
+</script>
+
+

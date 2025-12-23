@@ -1,0 +1,146 @@
+<div class="page-header">
+    <h1>Backup Management</h1>
+    <p>Create and manage database backups</p>
+</div>
+
+<div class="card" style="margin-bottom: 2rem;">
+    <div class="card-body">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+            <div>
+                <h3 style="margin: 0 0 0.5rem 0;">Database Backups</h3>
+                <p style="color: var(--text-secondary); margin: 0;">Create manual backups or view existing backups</p>
+            </div>
+            <button class="btn btn-primary" onclick="createBackup()">
+                <i class="fas fa-database"></i> Create Backup
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="backupsContainer">
+    <div class="empty-state">
+        <div class="empty-state-icon"><i class="fas fa-spinner fa-spin"></i></div>
+        <div class="empty-state-message">Loading backups...</div>
+    </div>
+</div>
+
+<script>
+async function initPage() {
+    if (!requireRole(['admin'])) return;
+    await loadBackups();
+}
+
+async function loadBackups() {
+    try {
+        showLoading();
+        const response = await api.listBackups();
+        
+        if (response.success && response.data.backups) {
+            const backups = response.data.backups;
+            renderBackups(backups);
+        } else {
+            showEmptyState();
+        }
+    } catch (error) {
+        console.error('Error loading backups:', error);
+        showToast('error', 'Error', 'Failed to load backups.');
+        showEmptyState();
+    } finally {
+        hideLoading();
+    }
+}
+
+function renderBackups(backups) {
+    const container = document.getElementById('backupsContainer');
+    
+    if (backups.length === 0) {
+        showEmptyState();
+        return;
+    }
+    
+    container.innerHTML = `
+        <div class="card">
+            <div class="card-body">
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>File Name</th>
+                                <th>Size</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${backups.map(backup => `
+                                <tr>
+                                    <td>${escapeHtml(backup.name || backup.fileName || backup.path || 'N/A')}</td>
+                                    <td>${backup.sizeMB || backup.size || 'N/A'} MB</td>
+                                    <td>${formatDate(backup.createdAt || backup.timestamp || backup.created_at)}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline" onclick="restoreBackup('${backup.path}')">
+                                            <i class="fas fa-undo"></i> Restore
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function showEmptyState() {
+    const container = document.getElementById('backupsContainer');
+    container.innerHTML = `
+        <div class="empty-state">
+            <div class="empty-state-icon"><i class="fas fa-database"></i></div>
+            <div class="empty-state-title">No Backups</div>
+            <div class="empty-state-message">No backups found. Create your first backup now.</div>
+        </div>
+    `;
+}
+
+async function createBackup() {
+    if (!confirm('Are you sure you want to create a backup? This may take a few moments.')) return;
+    
+    try {
+        showLoading();
+        const response = await api.createBackup();
+        
+        if (response.success) {
+            showToast('success', 'Backup Created', `Backup created successfully: ${response.data.fileName}`);
+            await loadBackups();
+        }
+    } catch (error) {
+        showToast('error', 'Error', error.message || 'Failed to create backup.');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function restoreBackup(backupPath) {
+    console.log('Frontend: Attempting to restore backup with path:', backupPath);
+
+    if (!confirm('Are you sure you want to restore this backup? This will overwrite current data.')) return;
+
+    if (!confirm('This action cannot be undone. Are you absolutely sure?')) return;
+
+    try {
+        showLoading();
+        const response = await api.restoreBackup(backupPath);
+
+        if (response.success) {
+            showToast('success', 'Backup Restored', 'Backup has been restored successfully.');
+        }
+    } catch (error) {
+        console.error('Frontend: Restore backup failed:', error);
+        showToast('error', 'Error', error.message || 'Failed to restore backup.');
+    } finally {
+        hideLoading();
+    }
+}
+</script>
+

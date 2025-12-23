@@ -1,0 +1,228 @@
+<div class="page-header">
+    <h1>Create Event</h1>
+    <p>Submit a new event for approval</p>
+</div>
+
+<div class="card" style="max-width: 800px; margin: 0 auto;">
+    <div class="card-body">
+        <form id="createEventForm">
+            <div class="form-group">
+                <label class="form-label required" for="eventTitle">Event Title</label>
+                <input 
+                    type="text" 
+                    id="eventTitle" 
+                    class="form-input" 
+                    placeholder="Enter event title"
+                    required
+                    minlength="3"
+                    maxlength="200"
+                >
+                <div class="form-error" id="titleError"></div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label required" for="eventDescription">Description</label>
+                <textarea 
+                    id="eventDescription" 
+                    class="form-textarea" 
+                    placeholder="Enter event description"
+                    required
+                    minlength="10"
+                ></textarea>
+                <div class="form-error" id="descriptionError"></div>
+            </div>
+
+            <div class="grid grid-2">
+                <div class="form-group">
+                    <label class="form-label required" for="eventDate">Event Date & Time</label>
+                    <input 
+                        type="datetime-local" 
+                        id="eventDate" 
+                        class="form-input" 
+                        required
+                    >
+                    <div class="form-error" id="dateError"></div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label required" for="eventMaxSeats">Maximum Seats</label>
+                    <input 
+                        type="number" 
+                        id="eventMaxSeats" 
+                        class="form-input" 
+                        placeholder="Enter maximum number of seats"
+                        required
+                        min="1"
+                    >
+                    <div class="form-error" id="maxSeatsError"></div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="eventCategory">Category</label>
+                <input 
+                    type="text" 
+                    id="eventCategory" 
+                    class="form-input" 
+                    placeholder="e.g., Workshop, Seminar, Competition"
+                >
+            </div>
+
+            <div class="form-group">
+                <label class="form-label required" for="locationName">Location Name</label>
+                <input 
+                    type="text" 
+                    id="locationName" 
+                    class="form-input" 
+                    placeholder="e.g., Main Hall, Room 101"
+                    required
+                >
+                <div class="form-error" id="locationNameError"></div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="locationAddress">Location Address</label>
+                <input 
+                    type="text" 
+                    id="locationAddress" 
+                    class="form-input" 
+                    placeholder="Enter full address (optional)"
+                >
+            </div>
+
+            <div class="card-footer">
+                <button type="button" class="btn btn-outline" onclick="if(typeof loadPage === 'function') loadPage('events'); else window.location.hash = 'events';">
+                    Cancel
+                </button>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-paper-plane"></i>
+                    Submit for Approval
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// Setup form handler
+(function() {
+    const form = document.getElementById('createEventForm');
+    if (form) {
+        // Remove existing listeners
+        const newForm = form.cloneNode(true);
+        form.parentNode.replaceChild(newForm, form);
+        
+        newForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            await handleCreateEvent(e);
+        });
+    }
+})();
+
+async function handleCreateEvent(e) {
+    if (e) e.preventDefault();
+    
+    const title = document.getElementById('eventTitle').value.trim();
+    const description = document.getElementById('eventDescription').value.trim();
+    const date = document.getElementById('eventDate').value;
+    const maxSeats = parseInt(document.getElementById('eventMaxSeats').value);
+    const category = document.getElementById('eventCategory').value.trim();
+    const locationName = document.getElementById('locationName').value.trim();
+    const locationAddress = document.getElementById('locationAddress').value.trim();
+    
+    // Clear errors
+    ['titleError', 'descriptionError', 'dateError', 'maxSeatsError', 'locationNameError'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '';
+    });
+    
+    // Validation
+    let hasError = false;
+    
+    if (!title || title.length < 3) {
+        const el = document.getElementById('titleError');
+        if (el) el.textContent = 'Title must be at least 3 characters';
+        hasError = true;
+    }
+    
+    if (!description || description.length < 10) {
+        const el = document.getElementById('descriptionError');
+        if (el) el.textContent = 'Description must be at least 10 characters';
+        hasError = true;
+    }
+    
+    if (!date) {
+        const el = document.getElementById('dateError');
+        if (el) el.textContent = 'Event date is required';
+        hasError = true;
+    } else {
+        const eventDate = new Date(date);
+        if (eventDate < new Date()) {
+            const el = document.getElementById('dateError');
+            if (el) el.textContent = 'Event date must be in the future';
+            hasError = true;
+        }
+    }
+    
+    if (!maxSeats || maxSeats < 1) {
+        const el = document.getElementById('maxSeatsError');
+        if (el) el.textContent = 'Maximum seats must be at least 1';
+        hasError = true;
+    }
+    
+    if (!locationName) {
+        const el = document.getElementById('locationNameError');
+        if (el) el.textContent = 'Location name is required';
+        hasError = true;
+    }
+    
+    if (hasError) return;
+    
+    try {
+        if (typeof showLoading === 'function') {
+            showLoading();
+        }
+        
+        if (typeof api === 'undefined') {
+            throw new Error('API service not available');
+        }
+        
+        const eventData = {
+            title,
+            description,
+            date: new Date(date).toISOString(),
+            maxSeats,
+            category: category || undefined,
+            location: {
+                name: locationName,
+                address: locationAddress || undefined
+            }
+        };
+        
+        const response = await api.createEvent(eventData);
+        
+        if (response.success) {
+            if (typeof showToast === 'function') {
+                showToast('success', 'Event Created', 'Your event has been submitted for approval.');
+            }
+            setTimeout(() => {
+                if (typeof loadPage === 'function') {
+                    loadPage('my-events');
+                } else {
+                    window.location.hash = 'my-events';
+                }
+            }, 1500);
+        }
+    } catch (error) {
+        console.error('Error creating event:', error);
+        if (typeof showToast === 'function') {
+            showToast('error', 'Error', error.message || 'Failed to create event.');
+        }
+    } finally {
+        if (typeof hideLoading === 'function') {
+            hideLoading();
+        }
+    }
+}
+</script>
+

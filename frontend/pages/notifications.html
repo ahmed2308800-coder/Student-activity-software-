@@ -1,0 +1,280 @@
+<div class="page-header">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <h1>Notifications</h1>
+            <p>Stay updated with your activities</p>
+        </div>
+        <div style="display: flex; gap: 0.5rem;" id="notificationActions"></div>
+    </div>
+</div>
+
+<div id="notificationsContainer">
+    <div class="empty-state">
+        <div class="empty-state-icon"><i class="fas fa-spinner fa-spin"></i></div>
+        <div class="empty-state-message">Loading notifications...</div>
+    </div>
+</div>
+
+<!-- Broadcast Modal -->
+<div class="modal-overlay" id="broadcastModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">Broadcast Notification</h3>
+            <button class="modal-close" onclick="hideModal('broadcastModal')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <form id="broadcastForm" onsubmit="handleBroadcast(event)">
+                <div class="form-group">
+                    <label class="form-label required" for="broadcastTitle">Title</label>
+                    <input type="text" id="broadcastTitle" class="form-input" required minlength="3" maxlength="200">
+                </div>
+                <div class="form-group">
+                    <label class="form-label required" for="broadcastMessage">Message</label>
+                    <textarea id="broadcastMessage" class="form-textarea" required minlength="10"></textarea>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-outline" onclick="hideModal('broadcastModal')">Cancel</button>
+            <button type="submit" form="broadcastForm" class="btn btn-primary">Send</button>
+        </div>
+    </div>
+</div>
+
+<script>
+async function initPage() {
+    // Wait for DOM to be ready
+    await waitForDOMReady();
+
+    // Check authentication before loading notifications
+    if (!AppState.token) {
+        console.log('Notifications page: No token, showing login required message');
+        showLoginRequired();
+        return;
+    }
+
+    renderHeaderActions();
+    await loadNotifications();
+}
+
+async function waitForDOMReady() {
+    // Wait for the main container to be available
+    for (let i = 0; i < 50; i++) { // Max 5 seconds
+        if (document.getElementById('notificationsContainer')) {
+            return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    console.warn('notificationsContainer not found after waiting');
+}
+
+function showLoginRequired() {
+    try {
+        const container = document.getElementById('notificationsContainer');
+        if (!container) {
+            console.log('notificationsContainer not found for login prompt');
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon"><i class="fas fa-sign-in-alt"></i></div>
+                <div class="empty-state-title">Login Required</div>
+                <div class="empty-state-message">Please login to view your notifications.</div>
+                <button class="btn btn-primary" onclick="loadPage('login')">Login</button>
+            </div>
+        `;
+
+        // Also hide the header actions
+        const headerActions = document.getElementById('notificationActions');
+        if (headerActions) {
+            headerActions.innerHTML = '';
+        }
+    } catch (error) {
+        console.log('Error showing login required:', error.message);
+    }
+}
+
+async function loadNotifications() {
+    try {
+        // Double-check authentication before making API call
+        if (!AppState.token) {
+            console.log('loadNotifications: No token, skipping API call');
+            safeShowEmptyState();
+            return;
+        }
+
+        showLoading();
+        const response = await api.getNotifications(50, 0);
+
+        if (response.success && response.data.notifications) {
+            const notifications = response.data.notifications;
+            renderNotifications(notifications);
+        } else {
+            safeShowEmptyState();
+        }
+    } catch (error) {
+        console.error('Error loading notifications:', error);
+        // Handle logout blocking - treat as normal case
+        if (error.message === 'User is logging out' || error.message === 'Authentication required') {
+            console.log('Notifications: API blocked during logout - showing empty state');
+            safeShowEmptyState();
+            return;
+        }
+        // Handle authentication errors
+        if (error.message && (error.message.includes('No token provided') || error.message.includes('Unauthorized'))) {
+            console.log('Notifications: Authentication error, redirecting to login');
+            if (typeof loadPage === 'function') {
+                loadPage('login');
+            }
+            return;
+        }
+        console.log('Notifications: Other error, showing empty state');
+        safeShowEmptyState();
+    } finally {
+        hideLoading();
+    }
+}
+
+function renderNotifications(notifications) {
+    const container = document.getElementById('notificationsContainer');
+    if (!container) {
+        console.error('notificationsContainer not found');
+        return;
+    }
+
+    if (notifications.length === 0) {
+        safeShowEmptyState();
+        return;
+    }
+    
+    container.innerHTML = `
+        <div class="card">
+            <div class="card-body">
+                ${notifications.map(notif => `
+                    <div style="padding: 1rem; border-bottom: 1px solid var(--border-color); ${!notif.read ? 'background: var(--bg-secondary);' : ''}" 
+                         onclick="markAsRead(${notif.id})">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                            <div style="flex: 1;">
+                                <h4 style="margin: 0 0 0.25rem 0; ${!notif.read ? 'font-weight: 700;' : ''}">
+                                    ${escapeHtml(notif.title)}
+                                </h4>
+                                <p style="color: var(--text-secondary); margin: 0;">
+                                    ${escapeHtml(notif.message)}
+                                </p>
+                            </div>
+                            ${!notif.read ? `
+                                <span class="badge badge-primary" style="margin-left: 1rem;">New</span>
+                            ` : ''}
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--text-light); margin-top: 0.5rem;">
+                            <i class="fas fa-clock"></i> ${getTimeAgo(notif.created_at)}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function renderHeaderActions() {
+    const container = document.getElementById('notificationActions');
+    if (!container) return;
+
+    const buttons = [`
+        <button class="btn btn-outline" onclick="markAllAsRead()">
+            <i class="fas fa-check-double"></i> Mark All Read
+        </button>
+    `];
+
+    if (AppState && AppState.role === 'admin') {
+        buttons.push(`
+            <button class="btn btn-primary" onclick="showBroadcastModal()">
+                <i class="fas fa-bullhorn"></i> Broadcast
+            </button>
+        `);
+    }
+
+    container.innerHTML = buttons.join('');
+}
+
+function showEmptyState() {
+    safeShowEmptyState();
+}
+
+function safeShowEmptyState() {
+    try {
+        const container = document.getElementById('notificationsContainer');
+        if (!container) {
+            console.log('notificationsContainer not found, skipping empty state');
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon"><i class="fas fa-bell"></i></div>
+                <div class="empty-state-title">No Notifications</div>
+                <div class="empty-state-message">You're all caught up!</div>
+            </div>
+        `;
+    } catch (error) {
+        console.log('Error showing empty state:', error.message);
+    }
+}
+
+
+async function markAsRead(id) {
+    try {
+        await api.markNotificationAsRead(id);
+        await loadNotifications();
+    } catch (error) {
+        console.error('Error marking notification as read:', error);
+    }
+}
+
+async function markAllAsRead() {
+    try {
+        showLoading();
+        const response = await api.markAllNotificationsAsRead();
+        
+        if (response.success) {
+            showToast('success', 'Success', 'All notifications marked as read.');
+            await loadNotifications();
+        }
+    } catch (error) {
+        showToast('error', 'Error', 'Failed to mark notifications as read.');
+    } finally {
+        hideLoading();
+    }
+}
+
+function showBroadcastModal() {
+    showModal('broadcastModal');
+}
+
+async function handleBroadcast(e) {
+    e.preventDefault();
+    
+    const title = document.getElementById('broadcastTitle').value.trim();
+    const message = document.getElementById('broadcastMessage').value.trim();
+    
+    try {
+        showLoading();
+        const response = await api.broadcastNotification(title, message);
+        
+        if (response.success) {
+            showToast('success', 'Broadcast Sent', `Notification sent to ${response.data.sentCount} users.`);
+            hideModal('broadcastModal');
+            document.getElementById('broadcastForm').reset();
+        }
+    } catch (error) {
+        showToast('error', 'Error', error.message || 'Failed to send broadcast.');
+    } finally {
+        hideLoading();
+    }
+}
+</script>
+
+

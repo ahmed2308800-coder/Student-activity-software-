@@ -1,0 +1,161 @@
+<div class="page-header">
+    <h1>Feedback</h1>
+    <p>Submit feedback for attended events</p>
+</div>
+
+<div id="feedbackContainer">
+    <div class="empty-state">
+        <div class="empty-state-icon"><i class="fas fa-spinner fa-spin"></i></div>
+        <div class="empty-state-message">Loading...</div>
+    </div>
+</div>
+
+<script>
+// Declare global variables defensively to prevent redeclaration errors
+if (typeof eventId === 'undefined') {
+    var eventId = null;
+}
+
+async function initPage() {
+    // Check authentication before loading feedback
+    if (!AppState.token) {
+        console.log('Feedbacks: No authentication token found, redirecting to login');
+        if (typeof loadPage === 'function') {
+            loadPage('login');
+        }
+        return;
+    }
+
+    const urlParams = new URLSearchParams(window.location.hash.split('?')[1]);
+    eventId = urlParams.get('eventId');
+
+    if (eventId) {
+        await loadFeedbackForm(eventId);
+    } else {
+        await loadMyFeedbacks();
+    }
+}
+
+async function loadFeedbackForm(eventId) {
+    try {
+        showLoading();
+        const eventResponse = await api.getEventById(eventId);
+        
+        if (eventResponse.success && eventResponse.data.event) {
+            const event = eventResponse.data.event;
+            renderFeedbackForm(event);
+        } else {
+            showToast('error', 'Error', 'Event not found.');
+            loadPage('registrations');
+        }
+    } catch (error) {
+        console.error('Error loading event:', error);
+        // Handle authentication errors
+        if (error.message && (error.message.includes('No token provided') || error.message.includes('Unauthorized'))) {
+            console.log('Feedbacks: Authentication error, redirecting to login');
+            if (typeof loadPage === 'function') {
+                loadPage('login');
+            }
+            return;
+        }
+        showToast('error', 'Error', 'Failed to load event.');
+        loadPage('registrations');
+    } finally {
+        hideLoading();
+    }
+}
+
+function renderFeedbackForm(event) {
+    const container = document.getElementById('feedbackContainer');
+    
+    container.innerHTML = `
+        <div class="card" style="max-width: 600px; margin: 0 auto;">
+            <div class="card-header">
+                <h3 class="card-title">Submit Feedback</h3>
+            </div>
+            <div class="card-body">
+                <div style="margin-bottom: 1.5rem;">
+                    <h4>${escapeHtml(event.title)}</h4>
+                    <p style="color: var(--text-secondary);">${formatDate(event.date)}</p>
+                </div>
+                
+                <form id="feedbackForm" onsubmit="handleSubmitFeedback(event)">
+                    <div class="form-group">
+                        <label class="form-label required" for="rating">Rating</label>
+                        <select id="rating" class="form-select" required>
+                            <option value="">Select rating</option>
+                            <option value="5">5 - Excellent</option>
+                            <option value="4">4 - Very Good</option>
+                            <option value="3">3 - Good</option>
+                            <option value="2">2 - Fair</option>
+                            <option value="1">1 - Poor</option>
+                        </select>
+                        <div class="form-error" id="ratingError"></div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label" for="comment">Comment</label>
+                        <textarea 
+                            id="comment" 
+                            class="form-textarea" 
+                            placeholder="Share your thoughts about the event (optional)"
+                            rows="5"
+                        ></textarea>
+                    </div>
+                    
+                    <div class="card-footer">
+                        <button type="button" class="btn btn-outline" onclick="loadPage('registrations')">
+                            Cancel
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-paper-plane"></i> Submit Feedback
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    `;
+}
+
+async function handleSubmitFeedback(e) {
+    e.preventDefault();
+    
+    const rating = parseInt(document.getElementById('rating').value);
+    const comment = document.getElementById('comment').value.trim();
+    
+    if (!rating) {
+        document.getElementById('ratingError').textContent = 'Rating is required';
+        return;
+    }
+    
+    try {
+        showLoading();
+        const response = await api.submitFeedback(eventId, rating, comment || undefined);
+        
+        if (response.success) {
+            showToast('success', 'Feedback Submitted', 'Thank you for your feedback!');
+            setTimeout(() => {
+                loadPage('registrations');
+            }, 1500);
+        }
+    } catch (error) {
+        showToast('error', 'Error', error.message || 'Failed to submit feedback.');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function loadMyFeedbacks() {
+    // This would show user's submitted feedbacks
+    const container = document.getElementById('feedbackContainer');
+    container.innerHTML = `
+        <div class="empty-state">
+            <div class="empty-state-icon"><i class="fas fa-comment"></i></div>
+            <div class="empty-state-title">No Feedback</div>
+            <div class="empty-state-message">You haven't submitted any feedback yet.</div>
+        </div>
+    `;
+}
+</script>
+
+

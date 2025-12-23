@@ -1,0 +1,382 @@
+<div class="page-header">
+    <h1>Analytics Dashboard</h1>
+    <p>View system statistics and reports</p>
+</div>
+
+<div id="analyticsContainer">
+    <div class="empty-state">
+        <div class="empty-state-icon"><i class="fas fa-spinner fa-spin"></i></div>
+        <div class="empty-state-message">Loading analytics...</div>
+    </div>
+</div>
+
+<script>
+// Use IIFE to avoid variable redeclaration errors
+(function() {
+    'use strict';
+    
+    // Check if Chart.js is already loaded globally
+    if (typeof window.Chart !== 'undefined') {
+        // Chart.js already loaded, use it
+        window.analyticsChart = window.Chart;
+    } else {
+        // Initialize chart variables
+        window.analyticsChart = null;
+    }
+    
+    // Chart instances
+    if (!window.analyticsCharts) {
+        window.analyticsCharts = {
+            eventsChart: null,
+            usersChart: null
+        };
+    }
+    
+    // Load Chart.js dynamically
+    window.loadChartJS = async function() {
+        // Check if Chart.js is already loaded
+        if (typeof window.Chart !== 'undefined' && window.Chart !== null) {
+            window.analyticsChart = window.Chart;
+            return window.Chart;
+        }
+        
+        // Check if script is already being loaded
+        const existingScript = document.querySelector('script[src*="chart.js"]');
+        if (existingScript) {
+            // Wait for it to load
+            return new Promise((resolve) => {
+                existingScript.addEventListener('load', () => {
+                    window.analyticsChart = window.Chart;
+                    resolve(window.Chart);
+                });
+                if (window.Chart) {
+                    window.analyticsChart = window.Chart;
+                    resolve(window.Chart);
+                }
+            });
+        }
+        
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js';
+            script.onload = () => {
+                window.analyticsChart = window.Chart;
+                resolve(window.Chart);
+            };
+            script.onerror = () => {
+                console.error('Failed to load Chart.js');
+                reject(new Error('Chart.js failed to load'));
+            };
+            document.head.appendChild(script);
+        });
+    };
+})();
+
+window.initPage = async function() {
+    // Check if user has admin role
+    if (typeof AppState === 'undefined' || !AppState.user || AppState.user.role !== 'admin') {
+        const container = document.getElementById('analyticsContainer');
+        if (container) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon"><i class="fas fa-lock"></i></div>
+                    <div class="empty-state-title">Access Denied</div>
+                    <div class="empty-state-message">You need admin privileges to view analytics.</div>
+                    <button class="btn btn-primary" onclick="if(typeof loadPage === 'function') loadPage('dashboard'); else window.location.hash = 'dashboard';" style="margin-top: 1rem;">
+                        Go to Dashboard
+                    </button>
+                </div>
+            `;
+        }
+        return;
+    }
+    
+    try {
+        await window.loadChartJS();
+        await window.loadAnalytics();
+    } catch (error) {
+        console.error('Error initializing analytics:', error);
+        const container = document.getElementById('analyticsContainer');
+        if (container) {
+            const errorMessage = error.message || 'Please refresh the page';
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                    <div class="empty-state-title">Failed to Load Analytics</div>
+                    <div class="empty-state-message">${errorMessage}</div>
+                </div>
+            `;
+        }
+    }
+};
+
+window.loadAnalytics = async function() {
+    try {
+        if (typeof showLoading === 'function') {
+            showLoading();
+        }
+        
+        if (typeof api === 'undefined') {
+            throw new Error('API service not available');
+        }
+        
+        const response = await api.getDashboardStats();
+        
+        if (response.success && response.data) {
+            const stats = response.data;
+            window.renderAnalytics(stats);
+        } else {
+            window.showEmptyState();
+        }
+    } catch (error) {
+        console.error('Error loading analytics:', error);
+        const errorMessage = error.message || 'Failed to load analytics.';
+        
+        // Check if it's a 403 error
+        if (errorMessage.includes('403') || errorMessage.includes('Access denied') || errorMessage.includes('Insufficient role')) {
+            const container = document.getElementById('analyticsContainer');
+            if (container) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon"><i class="fas fa-lock"></i></div>
+                        <div class="empty-state-title">Access Denied</div>
+                        <div class="empty-state-message">You need admin privileges to view analytics.</div>
+                        <button class="btn btn-primary" onclick="if(typeof loadPage === 'function') loadPage('dashboard'); else window.location.hash = 'dashboard';" style="margin-top: 1rem;">
+                            Go to Dashboard
+                        </button>
+                    </div>
+                `;
+            }
+        } else {
+            if (typeof showToast === 'function') {
+                showToast('error', 'Error', errorMessage);
+            }
+            window.showEmptyState();
+        }
+    } finally {
+        if (typeof hideLoading === 'function') {
+            hideLoading();
+        }
+    }
+};
+
+window.renderAnalytics = function(stats) {
+    const container = document.getElementById('analyticsContainer');
+    if (!container) {
+        console.error('analyticsContainer not found');
+        return;
+    }
+    
+    container.innerHTML = `
+        <div class="stats-grid" style="margin-bottom: 2rem;">
+            <div class="stat-card">
+                <div class="stat-header">
+                    <div>
+                        <div class="stat-value">${stats.users?.total || 0}</div>
+                        <div class="stat-label">Total Users</div>
+                    </div>
+                    <div class="stat-icon primary">
+                        <i class="fas fa-users"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <div>
+                        <div class="stat-value">${stats.events?.total || 0}</div>
+                        <div class="stat-label">Total Events</div>
+                    </div>
+                    <div class="stat-icon info">
+                        <i class="fas fa-calendar"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <div>
+                        <div class="stat-value">${stats.registrations?.total || 0}</div>
+                        <div class="stat-label">Total Registrations</div>
+                    </div>
+                    <div class="stat-icon success">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <div>
+                        <div class="stat-value">${stats.participation?.participationRate || 0}%</div>
+                        <div class="stat-label">Participation Rate</div>
+                    </div>
+                    <div class="stat-icon warning">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="grid grid-2" style="margin-bottom: 2rem;">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Events by Status</h3>
+                </div>
+                <div class="card-body">
+                    <canvas id="eventsChart"></canvas>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Users by Role</h3>
+                </div>
+                <div class="card-body">
+                    <canvas id="usersChart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Detailed Statistics</h3>
+            </div>
+            <div class="card-body">
+                <div class="grid grid-2">
+                    <div>
+                        <h4 style="margin-bottom: 1rem;">Event Statistics</h4>
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span>Pending Events:</span>
+                                <strong>${stats.events?.breakdown?.pending || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span>Approved Events:</span>
+                                <strong>${stats.events?.breakdown?.approved || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span>Rejected Events:</span>
+                                <strong>${stats.events?.breakdown?.rejected || 0}</strong>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <h4 style="margin-bottom: 1rem;">User Statistics</h4>
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span>Students:</span>
+                                <strong>${stats.users?.breakdown?.students || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span>Club Representatives:</span>
+                                <strong>${stats.users?.breakdown?.clubRepresentatives || 0}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span>Admins:</span>
+                                <strong>${stats.users?.breakdown?.admins || 0}</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Render charts after a delay to ensure DOM is ready
+    setTimeout(() => {
+        if (window.analyticsChart || window.Chart) {
+            window.renderEventsChart(stats.events?.byStatus || {});
+            window.renderUsersChart(stats.users?.byRole || {});
+        } else {
+            console.warn('Chart.js not loaded yet');
+        }
+    }, 200);
+};
+
+window.renderEventsChart = function(eventsByStatus) {
+    const ctx = document.getElementById('eventsChart');
+    const ChartLib = window.analyticsChart || window.Chart;
+    if (!ctx || !ChartLib) return;
+    
+    if (window.analyticsCharts.eventsChart) {
+        window.analyticsCharts.eventsChart.destroy();
+    }
+    
+    try {
+        window.analyticsCharts.eventsChart = new ChartLib(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(eventsByStatus),
+            datasets: [{
+                data: Object.values(eventsByStatus),
+                backgroundColor: [
+                    'rgba(245, 158, 11, 0.8)',
+                    'rgba(16, 185, 129, 0.8)',
+                    'rgba(239, 68, 68, 0.8)',
+                    'rgba(100, 116, 139, 0.8)'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true
+        }
+    });
+    } catch (error) {
+        console.error('Error rendering events chart:', error);
+    }
+};
+
+window.renderUsersChart = function(usersByRole) {
+    const ctx = document.getElementById('usersChart');
+    const ChartLib = window.analyticsChart || window.Chart;
+    if (!ctx || !ChartLib) return;
+    
+    if (window.analyticsCharts.usersChart) {
+        window.analyticsCharts.usersChart.destroy();
+    }
+    
+    try {
+        window.analyticsCharts.usersChart = new ChartLib(ctx, {
+        type: 'bar',
+        data: {
+            labels: Object.keys(usersByRole).map(r => {
+                const formatRole = window.formatRole || function(role) {
+                    return role ? role.charAt(0).toUpperCase() + role.slice(1).replace(/_/g, ' ') : role;
+                };
+                return formatRole(r);
+            }),
+            datasets: [{
+                label: 'Users',
+                data: Object.values(usersByRole),
+                backgroundColor: 'rgba(37, 99, 235, 0.8)'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+    } catch (error) {
+        console.error('Error rendering users chart:', error);
+    }
+};
+
+window.showEmptyState = function() {
+    const container = document.getElementById('analyticsContainer');
+    if (!container) {
+        console.error('analyticsContainer not found');
+        return;
+    }
+    container.innerHTML = `
+        <div class="empty-state">
+            <div class="empty-state-icon"><i class="fas fa-chart-bar"></i></div>
+            <div class="empty-state-title">No Analytics Data</div>
+            <div class="empty-state-message">Analytics data is not available.</div>
+        </div>
+    `;
+};
+</script>
+
